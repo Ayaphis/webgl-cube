@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import './App.css'
 import Matrix4f from './math/matrix'
-import meshup from './math/mesh'
+import GeoMesh from './math/GeoMesh'
+import { meshup, ringCut } from './math/mesh'
 
 // //eslint-disable-next-line
 // import vertSource from './shaders/vertices-shader.glsl'
@@ -31,6 +32,8 @@ const useGetWindowSize = () => {
 const App: React.FC = () => {
   const { width, height } = useGetWindowSize()
   const onCanvasLoaded = (canvas: HTMLCanvasElement) => {
+
+    cancelAnimationFrame(nextFrame)
     if (canvas == null) {
       return
     }
@@ -39,9 +42,6 @@ const App: React.FC = () => {
     const gl = canvas.getContext("webgl")
     if (gl == null) {
       return
-    }
-    if (nextFrame != null) {
-      cancelAnimationFrame(nextFrame)
     }
 
 
@@ -108,37 +108,44 @@ const App: React.FC = () => {
 
     //model
     const Model = meshup()
+    const Lines = ringCut()
 
-    //bind model data to buffer
-    const vertexBuffer = gl.createBuffer()
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(Model.vertices), gl.STATIC_DRAW)
-    gl.bindBuffer(gl.ARRAY_BUFFER, null)
+    const bindMesh = (mesh: GeoMesh) => {
+      //bind model data to buffer
+      const vertexBuffer = gl.createBuffer()
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mesh.vertices), gl.STATIC_DRAW)
+      gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
-    const colorBuffer = gl.createBuffer()
-    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(Model.colors), gl.STATIC_DRAW)
-    gl.bindBuffer(gl.ARRAY_BUFFER, null)
+      const colorBuffer = gl.createBuffer()
+      gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(mesh.colors), gl.STATIC_DRAW)
+      gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
-    const indexBuffer = gl.createBuffer()
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(Model.indices), gl.STATIC_DRAW)
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
+      const indexBuffer = gl.createBuffer()
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(mesh.indices), gl.STATIC_DRAW)
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
 
-    const lineBuffer = gl.createBuffer()
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lineBuffer)
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(Model.lines), gl.STATIC_DRAW)
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
-
-
-    const mesh: Mesh = {
-      moveMatrix: Matrix4f.getEye(),
-      indexBuffer,
-      lineBuffer,
-      vertexBuffer,
-      colorBuffer,
-      indices: Model.indices
+      const lineBuffer = gl.createBuffer()
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lineBuffer)
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(mesh.lines), gl.STATIC_DRAW)
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
+      return {
+        moveMatrix: Matrix4f.getEye(),
+        indexBuffer,
+        lineBuffer,
+        vertexBuffer,
+        colorBuffer,
+        length: mesh.indices.length == 0 ? mesh.lines.length : mesh.indices.length 
+      }
     }
+
+
+
+
+    const mesh = bindMesh(Model)
+    const line = bindMesh(Lines)
 
     //scene    
     const matrices: MatrixParams = {
@@ -146,23 +153,24 @@ const App: React.FC = () => {
       viewMatrix: Matrix4f.getEye(),
       moveMatrix: Matrix4f.getEye(),
     }
+    // matrices.moveMatrix.rotateX(0.2)
     matrices.viewMatrix._val[14] -= 6
 
 
     console.log("GOGOGO")
 
 
-    draw({ gl, shaderProgram, matrices, forms, mesh })
+    draw({ gl, shaderProgram, matrices, forms, mesh, line })
   }
 
-  let nextFrame = -1
+
 
 
   const draw = (woker: DrawWorker)
     : void => {
     const { gl, shaderProgram,
-      matrices, forms, mesh } = woker
-    mesh.moveMatrix.rotateY(0.01)
+      matrices, forms, mesh, line } = woker
+    matrices.moveMatrix.rotateY(0.01)
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height)
     // console.log(width, height)
     gl.enable(gl.DEPTH_TEST)
@@ -185,12 +193,22 @@ const App: React.FC = () => {
     gl.vertexAttribPointer(forms.color, 3, gl.FLOAT, false, 0, 0)
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indexBuffer)
-    gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indexBuffer)
-    gl.drawElements(gl.POINTS, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
+    gl.drawElements(gl.TRIANGLES, mesh.length, gl.UNSIGNED_SHORT, 0)
+    // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indexBuffer)
+    // gl.drawElements(gl.POINTS, mesh.indices.length, gl.UNSIGNED_SHORT, 0)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.lineBuffer)
-    gl.drawElements(gl.LINES, mesh.indices.length * 2, gl.UNSIGNED_SHORT, 0)
+    gl.drawElements(gl.LINES, mesh.length * 2, gl.UNSIGNED_SHORT, 0)
 
+    
+    gl.uniformMatrix4fv(forms.Lmatrix, false, mesh.moveMatrix._val)
+    gl.bindBuffer(gl.ARRAY_BUFFER, line.vertexBuffer)
+    gl.vertexAttribPointer(forms.coord, 3, gl.FLOAT, false, 0, 0)
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, line.colorBuffer)
+    gl.vertexAttribPointer(forms.color, 3, gl.FLOAT, false, 0, 0)
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,  line.lineBuffer)
+    gl.drawElements(gl.LINES, line.length, gl.UNSIGNED_SHORT, 0)
     // console.log(mesh)
     // console.log("DRAW")
     nextFrame = requestAnimationFrame(() => draw(woker))
@@ -203,7 +221,7 @@ const App: React.FC = () => {
   )
 
 }
-
+let nextFrame = -1
 
 interface MatrixParams {
   projectMatrix: Matrix4f
@@ -224,7 +242,7 @@ interface Mesh {
   vertexBuffer: WebGLBuffer | null
   colorBuffer: WebGLBuffer | null
   lineBuffer: WebGLBuffer | null
-  indices: Array<number>
+  length: number
 }
 interface DrawWorker {
   gl: WebGLRenderingContext
@@ -232,6 +250,7 @@ interface DrawWorker {
   matrices: MatrixParams
   forms: FormLocations
   mesh: Mesh
+  line: Mesh
 }
 
 export default App

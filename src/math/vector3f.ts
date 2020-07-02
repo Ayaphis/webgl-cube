@@ -52,13 +52,22 @@ class Vector3f {
         const A = Vector3f.diff(from, origin)
         const B = Vector3f.diff(to, origin)
         const theta = Math.acos(Vector3f.innerPoduct(A, B) / A.mod2())
-        const delta = theta / divide        
+        const delta = theta / divide
         for (let i = 0; i <= divide; i++) {
             const y = Math.sin(i * delta) / Math.sin(theta)
             const x = Math.cos(i * delta) - Math.cos(theta) * y
             ans.push(Vector3f.sum(origin, Vector3f.sum(Vector3f.scaled(A, x), Vector3f.scaled(B, y))))
         }
         return ans
+    }
+    static RotateTo(from: Vector3f, to: Vector3f, origin: Vector3f, d: number): Vector3f {
+        const B = Vector3f.diff(from, origin)
+        const A = Vector3f.diff(to, origin)
+        const theta = Math.acos(Vector3f.innerPoduct(A, B) / A.mod2())
+        const delta = Math.PI * d / 180
+        const y = Math.sin(delta) / Math.sin(theta)
+        const x = Math.cos(delta) - Math.cos(theta) * y
+        return Vector3f.sum(origin, Vector3f.sum(Vector3f.scaled(A, x), Vector3f.scaled(B, y)))
     }
 }
 
